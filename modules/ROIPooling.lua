@@ -28,7 +28,7 @@ function layer:updateOutput(input)
   --if rois[1][1] ~=1 then
   --  rois[{{},{1}}] = rois[{{},{1}}] - rois[1][1]+1
   --end
-
+  --print(rois)
   local num_rois = rois:size(1)
   local s = data:size()
   local ss = s:size(1)
@@ -38,7 +38,6 @@ function layer:updateOutput(input)
   rois[{{},2}]:cmin(s[ss-1])
   rois[{{},3}]:cmin(s[ss])
   rois[{{},4}]:cmin(s[ss-1])
-
   -- element access is faster if not a cuda tensor
   if rois:type() == 'torch.CudaTensor' then
     self._rois = self._rois or torch.FloatTensor()
@@ -57,6 +56,12 @@ function layer:updateOutput(input)
   for i=1,num_rois do
     --local roi = rois[i]
     --local im_idx = roi[1]
+    if rois[i][1] < 1 then rois[i][1] = 1 end
+    if rois[i][3] < 1 then rois[i][3] = 1 end
+    if rois[i][2] < 1 then rois[i][2] = 1 end
+    if rois[i][4] < 1 then rois[i][4] = 1 end
+    if rois[i][4] < rois[i][2] then rois[i][4] = rois[i][2] end 
+    if rois[i][3] < rois[i][1] then rois[i][3] = rois[i][1] end 
     local im = data[{{},{rois[i][2],rois[i][4]},{rois[i][1],rois[i][3]}}]
     self.output[i] = self.pooler[i]:updateOutput(im)
   end
@@ -80,6 +85,12 @@ function layer:updateGradInput(input,gradOutput)
   for i=1,num_rois do
     --local roi = rois[i]
     --local im_idx = roi[1]
+    if rois[i][1] < 1 then rois[i][1] = 1 end
+    if rois[i][3] < 1 then rois[i][3] = 1 end
+    if rois[i][2] < 1 then rois[i][2] = 1 end
+    if rois[i][4] < 1 then rois[i][4] = 1 end
+    if rois[i][4] < rois[i][2] then rois[i][4] = rois[i][2] end 
+    if rois[i][3] < rois[i][1] then rois[i][3] = rois[i][1] end 
     local r = {{},{rois[i][2],rois[i][4]},{rois[i][1],rois[i][3]}}
     local im = data[r]
     local g  = self.pooler[i]:updateGradInput(im,gradOutput[i])

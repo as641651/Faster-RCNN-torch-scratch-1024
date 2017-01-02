@@ -44,9 +44,11 @@ opt.train.classification_weight = 1.0
 opt.train.end_box_reg_weight=1.0
 
 print(opt)
+local cls_weights = torch.Tensor(21):fill(0.05)
+cls_weights[1] = 0.0
 opt.train.crits = {}
 opt.train.crits.box_reg_crit = nn.BoxesRegressionCriterion(opt.train.end_box_reg_weight)
-opt.train.crits.classification_crit = nn.OurCrossEntropyCriterion()
+opt.train.crits.classification_crit = nn.OurCrossEntropyCriterion(cls_weights)
 opt.train.crits.obj_crit_pos = nn.OurCrossEntropyCriterion() -- for objectness
 opt.train.crits.obj_crit_neg = nn.OurCrossEntropyCriterion() -- for objectness
 opt.train.crits.rpn_box_reg_crit = nn.SmoothL1Criterion() -- for RPN box regression
@@ -88,8 +90,8 @@ local train = {}
 function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 
    local losses = {}
---   losses.obj_loss_pos = 0
---   losses.obj_loss_neg = 0
+   losses.obj_loss_pos = 0
+   losses.obj_loss_neg = 0
    losses.obj_loss = 0
    losses.classification_loss = 0
    losses.end_box_reg_loss = 0
@@ -159,14 +161,14 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    labels_rpn:resize(num_pos + num_neg)
    labels_rpn[{{1, num_pos}}]:copy(pos_labels)
    labels_rpn[{{num_pos + 1, num_pos + num_neg}}]:copy(neg_labels)
-   
-   local obj_loss = opt.train.crits.obj_crit_pos:forward(scores_rpn, labels_rpn)
---   local obj_loss_pos = opt.train.crits.obj_crit_pos:forward(pos_scores, pos_labels)
---   local obj_loss_neg = opt.train.crits.obj_crit_neg:forward(neg_scores, neg_labels)
+  
+   --local obj_loss = opt.train.crits.obj_crit_pos:forward(scores_rpn, labels_rpn)
+   local obj_loss_pos = opt.train.crits.obj_crit_pos:forward(pos_scores, pos_labels)
+   local obj_loss_neg = opt.train.crits.obj_crit_neg:forward(neg_scores, neg_labels)
    local obj_weight = opt.train.mid_objectness_weight
-   losses.obj_loss = obj_weight * obj_loss
---   losses.obj_loss_pos = obj_weight * obj_loss_pos
---   losses.obj_loss_neg = obj_weight * obj_loss_neg
+--   losses.obj_loss = obj_weight * obj_loss
+   losses.obj_loss_pos = obj_weight * obj_loss_pos
+   losses.obj_loss_neg = obj_weight * obj_loss_neg
 
    local pos_trans_targets = nn.InvertBoxTransform():type(dtype):forward{
                                 pos_anchors, pos_target_boxes}
@@ -207,6 +209,18 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    losses.classification_loss = opt.train.crits.classification_crit:forward(net_out[1], target)
    losses.classification_loss = losses.classification_loss*opt.train.classification_weight
 
+   print("transform",net_out[2][{{1,2}}])
+   local e = 2
+   if e > num_pos then e = num_pos end
+   local tmplm = nn.SoftMax():type(dtype)
+   if e > 0 then
+     print("roi_boxes", roi_boxes[{{1,e}}])
+     print("pos target", pos_target_boxes[{{1,e}}])
+     print("pos labels", pos_target_labels[{{1,e}}])
+     local tmpsc = tmplm:updateOutput(net_out[1][{{1,e}}])
+     print("softmax pos scores",tmpsc)
+     print("num_pos", num_pos)
+   end
    --weight multiplied inside
    losses.end_box_reg_loss = opt.train.crits.box_reg_crit:forward(
                                 {roi_boxes[{{1,num_pos}}], net_out[2][{{1,num_pos}}], pos_target_labels},
@@ -260,15 +274,15 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 -------------------------------------------------------------------------------
 -- ----------------------------------------- grad pos+neg scores and grad pos trans
 -------------------------------------------------------------------------------
-   local grad_rpn_scores = opt.train.crits.obj_crit_pos:backward(scores_rpn, labels_rpn)
+--   local grad_rpn_scores = opt.train.crits.obj_crit_pos:backward(scores_rpn, labels_rpn)
 --   grad_rpn_scores:zero() --debug
---   local grad_pos_scores = opt.train.crits.obj_crit_pos:backward(pos_scores, pos_labels)
+   local grad_pos_scores = opt.train.crits.obj_crit_pos:backward(pos_scores, pos_labels)
 --   grad_pos_scores:zero() --debug
---   local grad_neg_scores = opt.train.crits.obj_crit_neg:backward(neg_scores, neg_labels)
+   local grad_neg_scores = opt.train.crits.obj_crit_neg:backward(neg_scores, neg_labels)
 --   grad_neg_scores:zero() --debug
-   grad_rpn_scores:mul(opt.train.mid_objectness_weight)
---   grad_pos_scores:mul(opt.train.mid_objectness_weight)
---   grad_neg_scores:mul(opt.train.mid_objectness_weight)
+--   grad_rpn_scores:mul(opt.train.mid_objectness_weight)
+   grad_pos_scores:mul(opt.train.mid_objectness_weight)
+   grad_neg_scores:mul(opt.train.mid_objectness_weight)
 
    local grad_pos_trans =  opt.train.crits.rpn_box_reg_crit:backward(pos_trans, pos_trans_targets)
    grad_pos_trans:mul(opt.train.mid_box_reg_weight)
@@ -281,11 +295,11 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    local grad_pos_data, grad_neg_data = {}, {}
    grad_pos_data[1] = grad_pos_roi_boxes
    grad_pos_data[3] = grad_pos_trans
-   grad_pos_data[4] = grad_rpn_scores[{{1,num_pos}}]
-  -- grad_pos_data[4] = grad_pos_scores
+--   grad_pos_data[4] = grad_rpn_scores[{{1,num_pos}}]
+   grad_pos_data[4] = grad_pos_scores
    grad_neg_data[1] = grad_neg_roi_boxes
-   grad_neg_data[4] = grad_rpn_scores[{{num_pos+1,num_pos+num_neg}}]
-   --grad_neg_data[4] = grad_neg_scores
+  -- grad_neg_data[4] = grad_rpn_scores[{{num_pos+1,num_pos+num_neg}}]
+   grad_neg_data[4] = grad_neg_scores
 
    local grad_rpn_out = model.sampler:backward(
                               {rpn_out, {gt_boxes, gt_labels}},
@@ -406,14 +420,17 @@ function deploy.forward_test(input)
   local roi_features = model.pooling:forward{cnn_output[1], rpn_boxes_nms}
   local net_out = model.recog:forward(roi_features)
  
+  print("transform",net_out[2][{{1,2}}])
   net_out[2] = net_out[2]:view(net_out[2]:size(1),opt.num_classes,4)
   local boxesTrans = nn.Sequential()
   boxesTrans:add(nn.ApplyBoxesTransform():type(dtype))
   local final_boxes = boxesTrans:forward({rpn_boxes_nms, net_out[2]})
+  print("final_boxes",final_boxes[{{1,2}}])
 
   local final_boxes_float = final_boxes:float()
   local class_scores_float = net_out[1]:float()
   class_scores_float = nn.SoftMax():type(class_scores_float:type()):forward(class_scores_float)
+  print("final_scores",class_scores_float[{{1,2}}])
     
   local rpn_boxes_float = rpn_boxes_nms:float()
   local rpn_scores_float = rpn_scores_nms:float()

@@ -11,7 +11,7 @@ function DataLoader:__init(opt)
   self.json_file = utils.getopt(opt, 'data_json') -- required json file with vocab etc. (made with prepro script)
   self.debug_max_train_images = utils.getopt(opt, 'debug_max_train_images', -1)
   self.proposal_regions_h5 = utils.getopt(opt, 'proposal_regions_h5', '')
-  self.image_size = utils.getopt(opt, 'image_size', '720')
+  self.image_size = utils.getopt(opt, 'image_size', '600')
   
   -- load the json file which contains additional information about the dataset
   print('DataLoader loading json file: ', self.json_file)
@@ -184,8 +184,11 @@ function DataLoader:getBatch(opt)
   local r1 = self.img_to_last_box[ix]
   local label_array = self.labels[{ {r0,r1} }]
   local box_batch = self.boxes[{ {r0,r1} }]
+  --print("box batch", box_batch)
   box_batch = box_utils.scale_boxes_xywh(box_batch:float(), w/ow)
+  --print("box scale", box_batch)
   box_batch = box_utils.xywh_to_xcycwh(box_batch):int()
+  --print("box correct", box_batch)
 
   --[[
   if self.difficult then

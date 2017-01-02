@@ -15,8 +15,8 @@ function BoxSampler:__init(options)
   self.batch_size = utils.getopt(options, 'batch_size', 128)
   self.fg_fraction = utils.getopt(options, 'fg_fraction', 0.5)
 
-  --self.nms_thresh = utils.getopt(options, 'nms_thresh', 0.7)
-  self.nms_thresh = 2
+  self.nms_thresh = utils.getopt(options, 'nms_thresh', 0.7)
+  --self.nms_thresh = 2
   self.num_proposals = utils.getopt(options, 'num_proposals', 2000)
 
   self.x_min, self.x_max = nil, nil
@@ -26,8 +26,8 @@ function BoxSampler:__init(options)
 end
 
 function BoxSampler:setNmsThresh(nms_thresh)
---  self.nms_thresh = nms_thresh
-  self.nms_thresh = 2
+  self.nms_thresh = nms_thresh
+--  self.nms_thresh = 2
 end
 
 function BoxSampler:setNumProposals(num_proposals)
@@ -104,6 +104,10 @@ function BoxSampler:updateOutput(input)
     inbounds_mask[y_max_mask] = 0
   end
 
+  if inbounds_mask[inbounds_mask:eq(1)]:numel() == 0 then
+      inbounds_mask = torch.ByteTensor(N, B1):fill(1)
+      print("no inbound rois. No masking done in boxsampler")
+  end
   local inbounds_idx = inbounds_mask:view(-1):nonzero():view(-1) -- The index of in-bound boxes
   -- input_boxes changes to (N, num_inbounds, 4)
   input_boxes = input_boxes:index(2, inbounds_idx) 
@@ -135,7 +139,6 @@ function BoxSampler:updateOutput(input)
     else
       nms_idx = box_utils.nms(boxes_scores, self.nms_thresh, self.num_proposals)
     end
-    print("NMS NOT SKIPPED")
   else
     -- Skip nms
     nms_idx = torch.range(1, num_inbounds):long()
@@ -187,6 +190,7 @@ function BoxSampler:updateOutput(input)
     local k = 'BoxSampler no negatives'
     local old_val = utils.__GLOBAL_STATS__[k] or 0
     utils.__GLOBAL_STATS__[k] = old_val + 1
+    print("neg mask", self.neg_mask)
   end
 
   local pos_mask_nonzero = self.pos_mask:nonzero():view(-1)

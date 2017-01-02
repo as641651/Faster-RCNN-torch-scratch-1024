@@ -19,7 +19,8 @@ def transferB(b,a):
 
 tnet = {}
 
-net = caffe.Net('test.prototxt','/work/cv3/sankaran/faster-rcnn/data/imagenet_models/VGG_CNN_M_1024.v2.caffemodel',caffe.TEST)
+#net = caffe.Net('test.prototxt','/work/cv3/sankaran/faster-rcnn/data/imagenet_models/VGG_CNN_M_1024.v2.caffemodel',caffe.TEST)
+net = caffe.Net('test.prototxt','/home/as641651/user/faster-rcnn/data/imagenet_models/VGG_CNN_M_1024.v2.caffemodel',caffe.TEST)
 print net.params['fc6'][0].data.shape
 print net.params['fc6'][1].data.shape
 

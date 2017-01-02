@@ -12,6 +12,7 @@ classifier = require 'classifier'
 local utils = require 'densecap.utils'
 local eval_utils = require 'eval.eval_utils'
 local cjson = require 'cjson'
+local box_utils = require 'densecap.box_utils'
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
@@ -20,7 +21,7 @@ local cjson = require 'cjson'
 local opt = {}
 opt.checkpoint_path = 'logs/model.t7'
 opt.max_iters = 40000
-opt.save_checkpoint_every = 10000
+opt.save_checkpoint_every = 2500
 
 opt.weight_decay = 0.0005
 opt.optim = 'adam'
@@ -73,10 +74,12 @@ local function lossFun()
   for k, v in pairs(data) do
     data[k] = v:type(classifier.dtype)
   end
-
+  --data.gt_boxes = box_utils.x1y1x2y2_to_xcycwh(data.gt_boxes) 
+  --data.gt_boxes = box_utils.xcycwh_to_x1y1x2y2(data.gt_boxes) 
   local losses, stats
   losses = {}
   losses.total_loss = 0.0
+  print(data.gt_boxes,info)
   local fb_time = utils.timeit(function()
     losses = classifier.train.forward_backward(data.image, data.gt_boxes, data.gt_labels,opt.fine_tune_cnn)
   end)
@@ -137,8 +140,8 @@ while true do
   -- print loss and timing/benchmarks
   print(string.format('iter %d: %s', iter, utils.build_loss_string(losses)))
   if iter == 40000 then
-     opt.learning_rate = 1e-5
-     opt.cnn_learning_rate = 1e-6
+     opt.learning_rate = 1e-4
+     opt.cnn_learning_rate = 1e-5
   end
 
   if (iter > 0 and iter % opt.save_checkpoint_every == 0) or (iter+1 == opt.max_iters) then

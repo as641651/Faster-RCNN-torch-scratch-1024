@@ -72,7 +72,7 @@ function eval_utils.eval_split(kwargs)
       local cls_gt_boxes
       if sel_inds:numel() ~= 0 then
         cls_gt_boxes = gt_boxes[1]:index(1, sel_inds)
-        --print(gt_boxes[1])
+        print("clsdd,gt ", cls, gt_boxes[1])
         --local Y,IX = torch.sort(scores[2],1,true) -- true makes order descending
         --print(scores[2])
         --print("max" , scores[2][IX[1]])

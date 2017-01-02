@@ -8,8 +8,9 @@ require 'modules.BoxSamplerHelper'
 require 'modules.RegularizeLayer'
 
 opt = {}
-opt.backend = 'cudnn'
-opt.box_reg_decay = 5e-5
+--opt.backend = 'cudnn'
+opt.backend = 'nn'
+opt.box_reg_decay = 0
 opt.field_centers = {7.5,7.5,16,16} --fcnn
 opt.sampler_nms_thresh = 1
 opt.sampler_num_proposals = 2000
