@@ -26,8 +26,8 @@ opt.save_checkpoint_every = 2500
 opt.weight_decay = 0.0005
 opt.optim = 'adam'
 opt.cnn_optim = 'adam'
-opt.learning_rate = 1e-3
-opt.cnn_learning_rate = 1e-3
+opt.learning_rate = 1e-5
+opt.cnn_learning_rate = 1e-5
 opt.val_images_use = 4000
 opt.optim_alpha = 0.9
 opt.optim_beta = 0.999
@@ -141,11 +141,7 @@ while true do
   print(string.format('iter %d: %s', iter, utils.build_loss_string(losses)))
   if iter == 40000 then
      opt.learning_rate = 1e-4
-<<<<<<< HEAD
      opt.cnn_learning_rate = 1e-5
-=======
-     opt.cnn_learning_rate = 1e-4
->>>>>>> f0b8fe673dbbeaefdfef1f79950973a9ed025611
   end
 
   if (iter > 0 and iter % opt.save_checkpoint_every == 0) or (iter+1 == opt.max_iters) then

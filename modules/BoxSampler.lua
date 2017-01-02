@@ -10,8 +10,8 @@ function BoxSampler:__init(options)
   parent.__init(self)
   options = options or {}
   self.fg_thresh = utils.getopt(options, 'fg_thresh', 0.5)
-  self.bg_low_thresh = utils.getopt(options, 'bg_low_thresh', 0.1)
-  self.bg_high_thresh = utils.getopt(options, 'bg_high_thresh', 0.5)
+  self.bg_low_thresh = utils.getopt(options, 'bg_low_thresh', 0.0)
+  self.bg_high_thresh = utils.getopt(options, 'bg_high_thresh', 0.3)
   self.batch_size = utils.getopt(options, 'batch_size', 128)
   self.fg_fraction = utils.getopt(options, 'fg_fraction', 0.5)
 

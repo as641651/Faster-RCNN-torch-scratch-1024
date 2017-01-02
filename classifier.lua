@@ -22,7 +22,9 @@ local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
 local model = require 'faster_rcnn_model'
 local eval_utils = require 'eval.eval_utils'
-
+local diag = true
+local vis_utils = require 'densecap.vis_utils'
+local image = require 'image'
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------  
@@ -109,6 +111,9 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    local rpn_boxes, rpn_anchors = rpn_out[1], rpn_out[2]
    local rpn_trans, rpn_scores = rpn_out[3], rpn_out[4]
 
+   --print(rpn_boxes[1]:size())
+--   print(debug_img)
+
 -------------------------------------------------------------------------------
 -- ---------------- Sample for 256 proposals
 -------------------------------------------------------------------------------
@@ -137,6 +142,7 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 
    local num_pos, num_neg = pos_boxes:size(1), neg_scores:size(1)
   
+
    local roi_boxes = torch.Tensor():type(dtype)
    roi_boxes:resize(num_pos + num_neg, 4)
    roi_boxes[{{1, num_pos}}]:copy(pos_boxes)
@@ -209,11 +215,11 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    losses.classification_loss = opt.train.crits.classification_crit:forward(net_out[1], target)
    losses.classification_loss = losses.classification_loss*opt.train.classification_weight
 
-   print("transform",net_out[2][{{1,2}}])
+   if diag then print("transform",net_out[2][{{1,2}}]) end
    local e = 2
    if e > num_pos then e = num_pos end
    local tmplm = nn.SoftMax():type(dtype)
-   if e > 0 then
+   if e > 0 and diag then
      print("roi_boxes", roi_boxes[{{1,e}}])
      print("pos target", pos_target_boxes[{{1,e}}])
      print("pos labels", pos_target_labels[{{1,e}}])
@@ -221,6 +227,19 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
      print("softmax pos scores",tmpsc)
      print("num_pos", num_pos)
    end
+--[[
+   net_out[2] = net_out[2]:view(net_out[2]:size(1),opt.num_classes,4)
+   local bt = nn.ApplyBoxesTransform():type(dtype)
+   local bt_b = bt:forward{pos_boxes,net_out[2][{{1,num_pos}}]}
+   print(bt_b)
+   local tmp_box = box_utils.xcycwh_to_xywh(bt_b)
+   for i = 1,27 do
+     local debug_img = vis_utils.densecap_draw(input[1],tmp_box[i])
+     local iname = "final_img_" .. tostring(i) .. ".jpg"
+     image.save(iname,debug_img)
+   end
+   os.exit()
+--]]
    --weight multiplied inside
    losses.end_box_reg_loss = opt.train.crits.box_reg_crit:forward(
                                 {roi_boxes[{{1,num_pos}}], net_out[2][{{1,num_pos}}], pos_target_labels},
