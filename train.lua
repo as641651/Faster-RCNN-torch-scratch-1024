@@ -13,6 +13,7 @@ local utils = require 'densecap.utils'
 local eval_utils = require 'eval.eval_utils'
 local cjson = require 'cjson'
 local box_utils = require 'densecap.box_utils'
+require 'nngraph'
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
@@ -20,15 +21,15 @@ local box_utils = require 'densecap.box_utils'
 -- Initialize training information
 local opt = {}
 opt.checkpoint_path = 'logs/model.t7'
-opt.max_iters = 40000
-opt.save_checkpoint_every = 2500
+opt.max_iters = 30000
+opt.save_checkpoint_every = 10000
 
-opt.weight_decay = 0.0005
-opt.optim = 'adam'
+opt.weight_decay = 0
+opt.optim = 'sgdmom'
 opt.cnn_optim = 'adam'
-opt.learning_rate = 1e-5
+opt.learning_rate = 1e-4
 opt.cnn_learning_rate = 1e-5
-opt.val_images_use = 4000
+opt.val_images_use = 1000
 opt.optim_alpha = 0.9
 opt.optim_beta = 0.999
 opt.optim_epsilon = 1e-8
@@ -102,6 +103,11 @@ end
 local loss0
 while true do  
 
+   if iter > 5005 then opt.fine_tune_cnn = true else opt.fine_tune_cnn = false end
+   if iter%5000 == 0 then 
+       opt.learning_rate = opt.learning_rate/10.0
+       opt.cnn_learning_rate = opt.cnn_learning_rate/10.0
+   end
   -- Compute loss and gradient
   local losses = lossFun()
 
@@ -139,11 +145,11 @@ while true do
 
   -- print loss and timing/benchmarks
   print(string.format('iter %d: %s', iter, utils.build_loss_string(losses)))
-  if iter == 40000 then
+  if iter == 20000 then
      opt.learning_rate = 1e-4
      opt.cnn_learning_rate = 1e-5
   end
-
+--]]
   if (iter > 0 and iter % opt.save_checkpoint_every == 0) or (iter+1 == opt.max_iters) then
 
     -- Evaluate validation performance

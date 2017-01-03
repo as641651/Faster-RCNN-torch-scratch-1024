@@ -10,7 +10,7 @@ require 'modules.RegularizeLayer'
 opt = {}
 --opt.backend = 'cudnn'
 opt.backend = 'nn'
-opt.box_reg_decay = 0
+opt.box_reg_decay = 5e-5
 opt.field_centers = {7.5,7.5,16,16} --fcnn
 opt.sampler_nms_thresh = 0.7
 opt.sampler_num_proposals = 2000
@@ -149,7 +149,7 @@ function recog(model)
    local outputs = {class_scores, bbox_pred}
 
    local mod = nn.gModule(inputs,outputs)
-   mod.name = 'recognition_networ'
+   mod.name = 'recognition_network'
    return mod
 end 
    

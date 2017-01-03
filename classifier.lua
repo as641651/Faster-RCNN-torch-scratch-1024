@@ -20,7 +20,7 @@ require 'modules.InvertBoxTransform'
 
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
-local model = require 'faster_rcnn_model'
+local model = require 'faster_rcnn_model_c'
 local eval_utils = require 'eval.eval_utils'
 local diag = true
 local vis_utils = require 'densecap.vis_utils'
@@ -46,11 +46,11 @@ opt.train.classification_weight = 1.0
 opt.train.end_box_reg_weight=1.0
 
 print(opt)
-local cls_weights = torch.Tensor(21):fill(0.05)
-cls_weights[1] = 0.0
+--local cls_weights = torch.Tensor(21):fill(0.05)
+--cls_weights[1] = 0.0
 opt.train.crits = {}
 opt.train.crits.box_reg_crit = nn.BoxesRegressionCriterion(opt.train.end_box_reg_weight)
-opt.train.crits.classification_crit = nn.OurCrossEntropyCriterion(cls_weights)
+opt.train.crits.classification_crit = nn.OurCrossEntropyCriterion()
 opt.train.crits.obj_crit_pos = nn.OurCrossEntropyCriterion() -- for objectness
 opt.train.crits.obj_crit_neg = nn.OurCrossEntropyCriterion() -- for objectness
 opt.train.crits.rpn_box_reg_crit = nn.SmoothL1Criterion() -- for RPN box regression
