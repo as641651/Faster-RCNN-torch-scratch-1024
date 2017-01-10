@@ -22,7 +22,7 @@ local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
 local model = require 'faster_rcnn_model_c'
 local eval_utils = require 'eval.eval_utils'
-local diag = true
+local diag = false
 local vis_utils = require 'densecap.vis_utils'
 local image = require 'image'
 -------------------------------------------------------------------------------
@@ -91,6 +91,11 @@ opt.train.crits.rpn_box_reg_crit:type(dtype)
 local train = {}
 function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 
+--   model.sampler:clearState()
+   model.rpn:clearState()
+   model.cnn_1:clearState()
+   model.cnn_2:clearState()
+
    local losses = {}
    losses.obj_loss_pos = 0
    losses.obj_loss_neg = 0
@@ -128,7 +133,6 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 
    local sampler_out = model.sampler:forward{
                           rpn_out, {gt_boxes, gt_labels}}
-
 --   print("sampler_out : ", sampler_out)
     -- Unpack pos data
    local pos_data, pos_target_data, neg_data = unpack(sampler_out)
@@ -212,7 +216,11 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    local target = gt_labels.new(num_out):fill(1) --  1 means background
    target[{{1, num_pos}}]:copy(pos_target_labels)
 
-   losses.classification_loss = opt.train.crits.classification_crit:forward(net_out[1], target)
+   local pr = net_out[1]
+   --print(pr[{{1,37}}])
+--   print(pos_target_labels)
+   --os.exit()
+   losses.classification_loss =  opt.train.crits.classification_crit:forward(net_out[1], target)
    losses.classification_loss = losses.classification_loss*opt.train.classification_weight
 
    if diag then print("transform",net_out[2][{{1,2}}]) end
@@ -241,13 +249,13 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    os.exit()
 --]]
    --weight multiplied inside
-   losses.end_box_reg_loss = opt.train.crits.box_reg_crit:forward(
+   losses.end_box_reg_loss =  opt.train.crits.box_reg_crit:forward(
                                 {roi_boxes[{{1,num_pos}}], net_out[2][{{1,num_pos}}], pos_target_labels},
                                 pos_target_boxes)
 -------------------------------------------------------------------------------
 -- backward
 -------------------------------------------------------------------------------
-
+   
 -------------------------------------------------------------------------------
 -- ---------------- grad scores and final boxes (net_out)
 -------------------------------------------------------------------------------
@@ -257,20 +265,20 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
                          pos_target_boxes)
    local grad_pos_roi_boxes, grad_final_pos_box_trans, _ = unpack(din)
    grad_pos_roi_boxes:zero() -- remove this for bilinear pooling
---   grad_final_pos_box_trans:zero() --debug
+  -- grad_final_pos_box_trans:zero() --debug
    grad_net_out[2] = net_out[2].new(#net_out[2]):zero()
    grad_net_out[2][{{1,num_pos}}]:copy(grad_final_pos_box_trans) 
    grad_net_out[2] = grad_net_out[2]:view(grad_net_out[2]:size(1),opt.num_classes*4)
   
    local grad_class_scores = opt.train.crits.classification_crit:backward(net_out[1], target)
---   grad_class_scores:zero() --debug
+  -- grad_class_scores:zero() --debug
    grad_class_scores:mul(opt.train.classification_weight)
    grad_net_out[1] = grad_class_scores
 
 -------------------------------------------------------------------------------
 -- ---------------- grad roi feats
 -------------------------------------------------------------------------------
-   grad_roi_features = model.recog:backward(roi_features,grad_net_out)
+   local grad_roi_features =  model.recog:backward(roi_features,grad_net_out) --debug
 -------------------------------------------------------------------------------
 -- ---------------- grad cnn output
 -------------------------------------------------------------------------------
@@ -284,7 +292,7 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
                     grad_roi_features)
    --grad_roi_boxes:add(din[2])
 
-   grad_cnn_output:add(grad_pool[1]:viewAs(cnn_output))
+   grad_cnn_output:add(grad_pool[1]:viewAs(cnn_output)) --debug
 
 -------------------------------------------------------------------------------
 -- ---------------------------- grad cnn output from RPN
@@ -320,16 +328,19 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
   -- grad_neg_data[4] = grad_rpn_scores[{{num_pos+1,num_pos+num_neg}}]
    grad_neg_data[4] = grad_neg_scores
 
-   local grad_rpn_out = model.sampler:backward(
+   local grad_rpn_out = model.sampler:backward(                          --debug
                               {rpn_out, {gt_boxes, gt_labels}},
                               {grad_pos_data, grad_neg_data})
 
    --print(grad_rpn_out[4])
    --print(grad_neg_scores)
-
-   local grad_rpn = model.rpn:backward(cnn_output,grad_rpn_out) 
+--   grad_rpn_out[1]:zero()
+--   grad_rpn_out[2]:zero()
+--   grad_rpn_out[3]:zero()
+--   grad_rpn_out[4]:zero()
+   local grad_rpn = model.rpn:backward(cnn_output,grad_rpn_out) --debug
 --   print(grad_rpn[grad_rpn:gt(0)])
-   grad_cnn_output:add(grad_rpn)
+   grad_cnn_output:add(grad_rpn) --debug
 
 -------------------------------------------------------------------------------
 -- ---------------- grad input
@@ -337,7 +348,7 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    if fine_tune_cnn then
      local grad_cnn_output_1 = model.cnn_2:backward(cnn_output_1,grad_cnn_output)
    end
---   local grad_input = model.cnn_1:backward(input,grad_cnn_output_1)
+--  local grad_input = model.cnn_1:backward(input,grad_cnn_output_1)
 
    local total = 0
    for k,v in pairs(losses) do
@@ -358,6 +369,10 @@ deploy.opt = opt
 -- forward_test
 -------------------------------------------------------------------------------
 function deploy.forward_test(input)  
+   model.rpn:clearState()
+   model.cnn_1:clearState()
+   model.cnn_2:clearState()
+
    local cnn_output_1 = model.cnn_1:forward(input)
    local cnn_output = model.cnn_2:forward(cnn_output_1)
    local rpn_out = model.rpn:forward(cnn_output)
@@ -439,18 +454,34 @@ function deploy.forward_test(input)
   local roi_features = model.pooling:forward{cnn_output[1], rpn_boxes_nms}
   local net_out = model.recog:forward(roi_features)
  
-  print("transform",net_out[2][{{1,2}}])
+--  print("transform",net_out[2][{{1,2}}])
   net_out[2] = net_out[2]:view(net_out[2]:size(1),opt.num_classes,4)
   local boxesTrans = nn.Sequential()
   boxesTrans:add(nn.ApplyBoxesTransform():type(dtype))
   local final_boxes = boxesTrans:forward({rpn_boxes_nms, net_out[2]})
-  print("final_boxes",final_boxes[{{1,2}}])
+--  print("final_boxes",final_boxes[{{1,2}}])
 
   local final_boxes_float = final_boxes:float()
   local class_scores_float = net_out[1]:float()
   class_scores_float = nn.SoftMax():type(class_scores_float:type()):forward(class_scores_float)
-  print("final_scores",class_scores_float[{{1,2}}])
-    
+--[[ 
+  idx = class_scores_float:view(-1):gt(0.005)
+  ii = torch.LongTensor(idx:size(1)):zero()
+  count = 0
+  for i = 1,idx:size(1) do
+     count = count + 1
+     if idx[i] == 1 then 
+        ii[i] = count
+     end 
+  end
+  ii = ii[ii:gt(0)]
+  print(ii)
+  final_boxes_float = final_boxes_float:view(final_boxes_float:size(1)*final_boxes_float:size(2),-1):index(1,ii)
+  --final_boxes_float = final_boxes_float:view
+--  print("final_scores",class_scores_float:gt(0.005))
+--  print("final_scores",idx)
+ --]]
+   
   local rpn_boxes_float = rpn_boxes_nms:float()
   local rpn_scores_float = rpn_scores_nms:float()
 
@@ -459,18 +490,36 @@ function deploy.forward_test(input)
    
   local after_nms_boxes = 0 
   for cls = 2, opt.num_classes do 
-      local boxes_scores = torch.FloatTensor(final_boxes_float:size(1), 5)
-      local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_boxes_float:select(2, cls):contiguous())
-      boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
-      boxes_scores[{{}, 5}]:copy(class_scores_float[{{}, cls}])
-      local idx = box_utils.nms(boxes_scores, opt.final_nms_thresh)
-      table.insert(final_boxes_output, final_boxes_float:index(1, idx):select(2, cls):typeAs(final_boxes))
-      table.insert(class_scores_output, class_scores_float:index(1, idx):select(2, cls):typeAs(net_out[1]))
-      after_nms_boxes = after_nms_boxes + final_boxes_output[cls]:size(1)      
+      local final_scores_float = class_scores_float[{{},cls}]
+      local ii = utils.apply_thresh(final_scores_float:contiguous(),0.005)
+      
+      if ii:numel() > 0 then 
+         final_scores_float = final_scores_float:index(1,ii) 
+         local final_regions_float = final_boxes_float:select(2,cls)
+         final_regions_float = final_regions_float:index(1,ii)
+         print(final_regions_float, final_scores_float)
+       
+         local boxes_scores = torch.FloatTensor(final_regions_float:size(1), 5)
+         local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_regions_float:contiguous())
+         boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
+         boxes_scores[{{}, 5}]:copy(final_scores_float)
+         local idx = box_utils.nms(boxes_scores, opt.final_nms_thresh)
+     
+         table.insert(final_boxes_output, final_regions_float:index(1, idx):typeAs(final_boxes))
+         table.insert(class_scores_output, final_scores_float:index(1, idx):typeAs(net_out[1]))
+         after_nms_boxes = after_nms_boxes + final_boxes_output[cls]:size(1)      
+      else
+         table.insert(final_boxes_output, torch.Tensor():typeAs(final_boxes))
+         table.insert(class_scores_output, torch.Tensor():typeAs(net_out[1]))
+      end
   end
   if verbose then
     print(string.format('After FINAL NMS there are %d boxes', after_nms_boxes))
   end
+
+  print(final_boxes_output)
+--  os.exit()
+
 
   return final_boxes_output, class_scores_output
 end
