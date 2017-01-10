@@ -133,6 +133,7 @@ function utils.average_values(t)
     vsum = vsum + v
     n = n + 1
   end
+  if n == 0 then return 0 end
   return vsum / n
 end
 

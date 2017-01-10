@@ -167,7 +167,7 @@ model['relu7'].inplace = true
 model['rpn_conv/3x3'].weight:normal(0,0.0001)
 model['rpn_cls_score'].weight:normal(0,0.0001)
 model['rpn_bbox_pred'].weight:normal(0,0.0001)
-model['cls_score'].weight:normal(0,0.0001)
+model['cls_score'].weight:normal(0,1e-6)
 model['bbox_pred'].weight:normal(0,1e-6)
 model['rpn_conv/3x3'].bias:fill(0)
 model['rpn_cls_score'].bias:fill(0)

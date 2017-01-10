@@ -20,7 +20,7 @@ require 'modules.InvertBoxTransform'
 
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
-local model = require 'faster_rcnn_model_c'
+local model = require 'faster_rcnn_model'
 local eval_utils = require 'eval.eval_utils'
 local diag = false
 local vis_utils = require 'densecap.vis_utils'
@@ -491,23 +491,23 @@ function deploy.forward_test(input)
   local after_nms_boxes = 0 
   for cls = 2, opt.num_classes do 
       local final_scores_float = class_scores_float[{{},cls}]
-      local ii = utils.apply_thresh(final_scores_float:contiguous(),0.005)
+      local ii = utils.apply_thresh(final_scores_float:contiguous(),0.05)
       
       if ii:numel() > 0 then 
          final_scores_float = final_scores_float:index(1,ii) 
          local final_regions_float = final_boxes_float:select(2,cls)
          final_regions_float = final_regions_float:index(1,ii)
-         print(final_regions_float, final_scores_float)
        
          local boxes_scores = torch.FloatTensor(final_regions_float:size(1), 5)
          local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_regions_float:contiguous())
          boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
          boxes_scores[{{}, 5}]:copy(final_scores_float)
-         local idx = box_utils.nms(boxes_scores, opt.final_nms_thresh)
+         local idx = box_utils.nms(boxes_scores, opt.final_nms_thresh,10)
      
          table.insert(final_boxes_output, final_regions_float:index(1, idx):typeAs(final_boxes))
          table.insert(class_scores_output, final_scores_float:index(1, idx):typeAs(net_out[1]))
          after_nms_boxes = after_nms_boxes + final_boxes_output[cls]:size(1)      
+         print(final_scores_float:index(1,idx))
       else
          table.insert(final_boxes_output, torch.Tensor():typeAs(final_boxes))
          table.insert(class_scores_output, torch.Tensor():typeAs(net_out[1]))

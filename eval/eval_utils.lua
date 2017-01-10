@@ -114,10 +114,12 @@ function eval_utils.eval_split(kwargs)
   ap_results.map = {}
   rc_results.mRecall = {}
   for cls = 2, model.opt.num_classes do
-    table.insert(ap_results.map, ap_results[cls]['ov0.3'])
-    print(cls,ap_results[cls]['ov0.3'])
-    table.insert(rc_results.mRecall, rc_results[cls]['ov0.3'])
-    print(cls,rc_results[cls]['ov0.3'])
+    if ap_results[cls] ~= nil then
+      table.insert(ap_results.map, ap_results[cls]['ov0.3'])
+      print(cls,ap_results[cls]['ov0.3'])
+      table.insert(rc_results.mRecall, rc_results[cls]['ov0.3'])
+      print(cls,rc_results[cls]['ov0.3'])
+    end
   end
   ap_results.map = utils.average_values(ap_results.map)
   rc_results.mRecall = utils.average_values(rc_results.mRecall)
@@ -283,6 +285,7 @@ function DenseCaptioningEvaluator:evaluate(verbose)
   --local min_overlaps = {0.3, 0.4, 0.5, 0.6, 0.7}
   local min_overlaps = {0.3}
 
+  if next(self.all_scores) == nil then return {nil,nil,nil} end
   -- concatenate everything across all images
   local scores = torch.cat(self.all_scores, 1) -- concat all scores
   -- call python to evaluate all records and get their BLEU/METEOR scores
@@ -335,7 +338,8 @@ function DenseCaptioningEvaluator:evaluate(verbose)
 
     fp = torch.cumsum(fp,1)
     tp = torch.cumsum(tp,1)
-    local rec = torch.div(tp, self.npos)
+    local rec = nil
+    if self.npos ~= 0 then rec = torch.div(tp, self.npos) else rec = torch.div(tp, 1) end
     local prec = torch.cdiv(tp, fp + tp)
 
     -- compute max-interpolated average precision
