@@ -10,7 +10,7 @@ require 'modules.RegularizeLayer'
 opt = {}
 --opt.backend = 'cudnn'
 opt.backend = 'nn'
-opt.box_reg_decay = 5e-5
+opt.box_reg_decay = 0
 opt.field_centers = {7.5,7.5,16,16} --fcnn
 opt.sampler_nms_thresh = 0.7
 opt.sampler_num_proposals = 2000
@@ -166,7 +166,7 @@ model['relu6'].inplace = true
 model['relu7'].inplace = true
 model['rpn_conv/3x3'].weight:normal(0,0.0001)
 model['rpn_cls_score'].weight:normal(0,0.0001)
-model['rpn_bbox_pred'].weight:normal(0,0.0001)
+model['rpn_bbox_pred'].weight:normal(0.0,0.0001)
 model['cls_score'].weight:normal(0,1e-6)
 model['bbox_pred'].weight:normal(0,1e-6)
 model['rpn_conv/3x3'].bias:fill(0)

@@ -20,7 +20,7 @@ require 'modules.InvertBoxTransform'
 
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
-local model = require 'faster_rcnn_model'
+local model = require 'faster_rcnn_model_c'
 local eval_utils = require 'eval.eval_utils'
 local diag = false
 local vis_utils = require 'densecap.vis_utils'
@@ -310,7 +310,6 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 --   grad_rpn_scores:mul(opt.train.mid_objectness_weight)
    grad_pos_scores:mul(opt.train.mid_objectness_weight)
    grad_neg_scores:mul(opt.train.mid_objectness_weight)
-
    local grad_pos_trans =  opt.train.crits.rpn_box_reg_crit:backward(pos_trans, pos_trans_targets)
    grad_pos_trans:mul(opt.train.mid_box_reg_weight)
 --   grad_pos_trans:zero() --debug
@@ -497,6 +496,7 @@ function deploy.forward_test(input)
          final_scores_float = final_scores_float:index(1,ii) 
          local final_regions_float = final_boxes_float:select(2,cls)
          final_regions_float = final_regions_float:index(1,ii)
+         local tmp = net_out[2]:select(2,cls):index(1,ii)
        
          local boxes_scores = torch.FloatTensor(final_regions_float:size(1), 5)
          local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_regions_float:contiguous())
@@ -508,6 +508,7 @@ function deploy.forward_test(input)
          table.insert(class_scores_output, final_scores_float:index(1, idx):typeAs(net_out[1]))
          after_nms_boxes = after_nms_boxes + final_boxes_output[cls]:size(1)      
          print(final_scores_float:index(1,idx))
+         print(tmp:index(1,idx))
       else
          table.insert(final_boxes_output, torch.Tensor():typeAs(final_boxes))
          table.insert(class_scores_output, torch.Tensor():typeAs(net_out[1]))

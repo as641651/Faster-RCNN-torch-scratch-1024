@@ -21,15 +21,15 @@ require 'nngraph'
 -- Initialize training information
 local opt = {}
 opt.checkpoint_path = 'logs/model.t7'
-opt.max_iters = 50000
-opt.save_checkpoint_every = 10000
+opt.max_iters = 300
+opt.save_checkpoint_every = 300
 
 opt.weight_decay = 0
 opt.optim = 'adam'
 opt.cnn_optim = 'adam'
-opt.learning_rate = 1e-4
+opt.learning_rate = 1e-5
 opt.cnn_learning_rate = 1e-5
-opt.val_images_use = 4000
+opt.val_images_use = 200
 opt.optim_alpha = 0.9
 opt.optim_beta = 0.999
 opt.optim_epsilon = 1e-8
@@ -45,7 +45,7 @@ if opt.fine_tune_cnn then
 end
 
 local faknet = nn.Sequential():type(classifier.dtype)
---faknet:add(classifier.model.rpn)
+faknet:add(classifier.model.rpn)
 faknet:add(classifier.model.recog)
 params, grad_params = faknet:getParameters()
 
