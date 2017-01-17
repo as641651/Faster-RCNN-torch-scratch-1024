@@ -21,15 +21,15 @@ require 'nngraph'
 -- Initialize training information
 local opt = {}
 opt.checkpoint_path = 'logs/model.t7'
-opt.max_iters = 300
-opt.save_checkpoint_every = 300
+opt.max_iters = 40000
+opt.save_checkpoint_every = 10000
 
 opt.weight_decay = 0
 opt.optim = 'adam'
 opt.cnn_optim = 'adam'
-opt.learning_rate = 1e-5
-opt.cnn_learning_rate = 1e-5
-opt.val_images_use = 200
+opt.learning_rate = 1e-3
+opt.cnn_learning_rate = 1e-3
+opt.val_images_use = 4000
 opt.optim_alpha = 0.9
 opt.optim_beta = 0.999
 opt.optim_epsilon = 1e-8
@@ -151,7 +151,7 @@ while true do
   end
 --]]
   if (iter > 0 and iter % opt.save_checkpoint_every == 0) or (iter+1 == opt.max_iters) then
-
+    collectgarbage()
     -- Evaluate validation performance
     local eval_kwargs = {
       model=classifier.deploy,

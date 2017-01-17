@@ -20,7 +20,7 @@ require 'modules.InvertBoxTransform'
 
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
-local model = require 'faster_rcnn_model_c'
+local model = require 'faster_rcnn_model'
 local eval_utils = require 'eval.eval_utils'
 local diag = false
 local vis_utils = require 'densecap.vis_utils'
@@ -81,6 +81,7 @@ model.rpn:type(dtype)
 model.pooling:type(dtype)
 model.recog:type(dtype)
 model.sampler:type(dtype)
+model.proposal:type(dtype)
 
 opt.train.crits.box_reg_crit:type(dtype)
 opt.train.crits.classification_crit:type(dtype)
@@ -129,77 +130,118 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
         y_max=input:size(3)
      }
      model.sampler:setBounds(bounds)
+     model.proposal:setBounds(bounds)
    end
 
-   local sampler_out = model.sampler:forward{
+   local rpn_sampler_out = model.sampler:forward{
                           rpn_out, {gt_boxes, gt_labels}}
 --   print("sampler_out : ", sampler_out)
     -- Unpack pos data
-   local pos_data, pos_target_data, neg_data = unpack(sampler_out)
+   local rpn_pos_data, rpn_pos_target_data, rpn_neg_data = unpack(rpn_sampler_out)
+   local rpn_pos_boxes, rpn_pos_anchors = rpn_pos_data[1], rpn_pos_data[2]
+   local rpn_pos_trans, rpn_pos_scores = rpn_pos_data[3], rpn_pos_data[4]
+    -- Unpack target data
+   local rpn_pos_target_boxes, rpn_pos_target_labels = unpack(rpn_pos_target_data)
+    -- Unpack neg data (only scores matter)
+   local rpn_neg_boxes = rpn_neg_data[1]
+   local rpn_neg_scores = rpn_neg_data[4]
+
+   local rpn_num_pos, rpn_num_neg = rpn_pos_boxes:size(1), rpn_neg_scores:size(1)
+   print("rpn num pos ", rpn_num_pos)
+  
+
+   local rpn_roi_boxes = torch.Tensor():type(dtype)
+   rpn_roi_boxes:resize(rpn_num_pos + rpn_num_neg, 4)
+   rpn_roi_boxes[{{1, rpn_num_pos}}]:copy(rpn_pos_boxes)
+   rpn_roi_boxes[{{rpn_num_pos + 1, rpn_num_pos + rpn_num_neg}}]:copy(rpn_neg_boxes)
+-------------------------------------------------------------------------------
+-- ---------------- RPN losses
+-------------------------------------------------------------------------------
+   local rpn_pos_labels = torch.Tensor()
+   rpn_pos_labels = rpn_pos_labels:type(dtype)
+   local rpn_neg_labels = torch.Tensor()
+   rpn_neg_labels = rpn_neg_labels:type(dtype)
+
+   rpn_pos_labels:resize(rpn_num_pos):fill(2)
+   rpn_neg_labels:resize(rpn_num_neg):fill(1)
+   
+   local scores_rpn = torch.Tensor():type(dtype)
+   scores_rpn:resize(rpn_num_pos + rpn_num_neg, 2)
+   scores_rpn[{{1, rpn_num_pos}}]:copy(rpn_pos_scores)
+   scores_rpn[{{rpn_num_pos + 1, rpn_num_pos + rpn_num_neg}}]:copy(rpn_neg_scores)
+   
+   local labels_rpn = torch.Tensor():type(dtype)
+   labels_rpn:resize(rpn_num_pos + rpn_num_neg)
+   labels_rpn[{{1, rpn_num_pos}}]:copy(rpn_pos_labels)
+   labels_rpn[{{rpn_num_pos + 1, rpn_num_pos + rpn_num_neg}}]:copy(rpn_neg_labels)
+  
+   local obj_loss = opt.train.crits.obj_crit_pos:forward(scores_rpn, labels_rpn)
+   --local obj_loss_pos = opt.train.crits.obj_crit_pos:forward(rpn_pos_scores, rpn_pos_labels)
+   --local obj_loss_neg = opt.train.crits.obj_crit_neg:forward(rpn_neg_scores, rpn_neg_labels)
+   local obj_weight = opt.train.mid_objectness_weight
+   losses.obj_loss = obj_weight * obj_loss
+   --losses.obj_loss_pos = obj_weight * obj_loss_pos
+   --losses.obj_loss_neg = obj_weight * obj_loss_neg
+
+   local rpn_pos_trans_targets = nn.InvertBoxTransform():type(dtype):forward{
+                                rpn_pos_anchors, rpn_pos_target_boxes}
+   -- DIRTY DIRTY HACK: To prevent the loss from blowing up, replace boxes
+   -- with huge pos_trans_targets with ground-truth
+   
+   local max_trans = torch.abs(rpn_pos_trans_targets):max(2)
+   local max_trans_mask = torch.gt(max_trans, 10):expandAs(rpn_pos_trans_targets)
+   local mask_sum = max_trans_mask:sum() / 4
+   if mask_sum > 0 then
+     local msg = 'WARNING: Masking out %d boxes in LocalizationLayer'
+     print(string.format(msg, mask_sum))
+     rpn_pos_trans[max_trans_mask] = 0
+     rpn_pos_trans_targets[max_trans_mask] = 0
+   end
+
+   -- Compute RPN box regression loss
+   local weight = opt.train.mid_box_reg_weight
+   local loss = weight * opt.train.crits.rpn_box_reg_crit:forward(rpn_pos_trans, rpn_pos_trans_targets)
+   losses.box_reg_loss = loss
+
+-------------------------------------------------------------------------------
+-- ---------------- Proposal
+-------------------------------------------------------------------------------
+
+   local proposal_out = model.proposal:forward{
+                          rpn_out, {gt_boxes, gt_labels}}
+--   print("sampler_out : ", sampler_out)
+    -- Unpack pos data
+   local pos_data, pos_target_data, neg_data = unpack(proposal_out)
    local pos_boxes, pos_anchors = pos_data[1], pos_data[2]
    local pos_trans, pos_scores = pos_data[3], pos_data[4]
     -- Unpack target data
    local pos_target_boxes, pos_target_labels = unpack(pos_target_data)
     -- Unpack neg data (only scores matter)
-   local neg_boxes = neg_data[1]
-   local neg_scores = neg_data[4]
+   local neg_boxes = rpn_neg_data[1]
+   local neg_scores = rpn_neg_data[4]
 
    local num_pos, num_neg = pos_boxes:size(1), neg_scores:size(1)
+   print("proposal num pos ", num_pos)
+   print("proposal pos scores ", pos_scores)
   
 
    local roi_boxes = torch.Tensor():type(dtype)
    roi_boxes:resize(num_pos + num_neg, 4)
    roi_boxes[{{1, num_pos}}]:copy(pos_boxes)
    roi_boxes[{{num_pos + 1, num_pos + num_neg}}]:copy(neg_boxes)
--------------------------------------------------------------------------------
--- ---------------- RPN losses
--------------------------------------------------------------------------------
-   local pos_labels = torch.Tensor()
-   pos_labels = pos_labels:type(dtype)
-   local neg_labels = torch.Tensor()
-   neg_labels = neg_labels:type(dtype)
-
-   pos_labels:resize(num_pos):fill(2)
-   neg_labels:resize(num_neg):fill(1)
-   
-   local scores_rpn = torch.Tensor():type(dtype)
-   scores_rpn:resize(num_pos + num_neg, 2)
-   scores_rpn[{{1, num_pos}}]:copy(pos_scores)
-   scores_rpn[{{num_pos + 1, num_pos + num_neg}}]:copy(neg_scores)
-   
-   local labels_rpn = torch.Tensor():type(dtype)
-   labels_rpn:resize(num_pos + num_neg)
-   labels_rpn[{{1, num_pos}}]:copy(pos_labels)
-   labels_rpn[{{num_pos + 1, num_pos + num_neg}}]:copy(neg_labels)
-  
-   --local obj_loss = opt.train.crits.obj_crit_pos:forward(scores_rpn, labels_rpn)
-   local obj_loss_pos = opt.train.crits.obj_crit_pos:forward(pos_scores, pos_labels)
-   local obj_loss_neg = opt.train.crits.obj_crit_neg:forward(neg_scores, neg_labels)
-   local obj_weight = opt.train.mid_objectness_weight
---   losses.obj_loss = obj_weight * obj_loss
-   losses.obj_loss_pos = obj_weight * obj_loss_pos
-   losses.obj_loss_neg = obj_weight * obj_loss_neg
 
    local pos_trans_targets = nn.InvertBoxTransform():type(dtype):forward{
                                 pos_anchors, pos_target_boxes}
-   -- DIRTY DIRTY HACK: To prevent the loss from blowing up, replace boxes
-   -- with huge pos_trans_targets with ground-truth
    
-   local max_trans = torch.abs(pos_trans_targets):max(2)
-   local max_trans_mask = torch.gt(max_trans, 10):expandAs(pos_trans_targets)
-   local mask_sum = max_trans_mask:sum() / 4
+   max_trans = torch.abs(pos_trans_targets):max(2)
+   max_trans_mask = torch.gt(max_trans, 10):expandAs(pos_trans_targets)
+   mask_sum = max_trans_mask:sum() / 4
    if mask_sum > 0 then
-     local msg = 'WARNING: Masking out %d boxes in LocalizationLayer'
+     local msg = 'WARNING: Masking out %d boxes in Proposal'
      print(string.format(msg, mask_sum))
      pos_trans[max_trans_mask] = 0
      pos_trans_targets[max_trans_mask] = 0
    end
-
-   -- Compute RPN box regression loss
-   local weight = opt.train.mid_box_reg_weight
-   local loss = weight * opt.train.crits.rpn_box_reg_crit:forward(pos_trans, pos_trans_targets)
-   losses.box_reg_loss = loss
-
 -------------------------------------------------------------------------------
 -- ---------------- Roi Pooling and FC net
 -------------------------------------------------------------------------------
@@ -216,7 +258,7 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
    local target = gt_labels.new(num_out):fill(1) --  1 means background
    target[{{1, num_pos}}]:copy(pos_target_labels)
 
-   local pr = net_out[1]
+   --local pr = net_out[1]
    --print(pr[{{1,37}}])
 --   print(pos_target_labels)
    --os.exit()
@@ -301,31 +343,32 @@ function train.forward_backward(input,gt_boxes,gt_labels,fine_tune_cnn)
 -------------------------------------------------------------------------------
 -- ----------------------------------------- grad pos+neg scores and grad pos trans
 -------------------------------------------------------------------------------
---   local grad_rpn_scores = opt.train.crits.obj_crit_pos:backward(scores_rpn, labels_rpn)
+   local grad_rpn_scores = opt.train.crits.obj_crit_pos:backward(scores_rpn, labels_rpn)
 --   grad_rpn_scores:zero() --debug
-   local grad_pos_scores = opt.train.crits.obj_crit_pos:backward(pos_scores, pos_labels)
+--   local grad_pos_scores = opt.train.crits.obj_crit_pos:backward(rpn_pos_scores, rpn_pos_labels)
 --   grad_pos_scores:zero() --debug
-   local grad_neg_scores = opt.train.crits.obj_crit_neg:backward(neg_scores, neg_labels)
+--   local grad_neg_scores = opt.train.crits.obj_crit_neg:backward(rpn_neg_scores, rpn_neg_labels)
 --   grad_neg_scores:zero() --debug
---   grad_rpn_scores:mul(opt.train.mid_objectness_weight)
-   grad_pos_scores:mul(opt.train.mid_objectness_weight)
-   grad_neg_scores:mul(opt.train.mid_objectness_weight)
-   local grad_pos_trans =  opt.train.crits.rpn_box_reg_crit:backward(pos_trans, pos_trans_targets)
+   grad_rpn_scores:mul(opt.train.mid_objectness_weight)
+--   grad_pos_scores:mul(opt.train.mid_objectness_weight)
+--   grad_neg_scores:mul(opt.train.mid_objectness_weight)
+   local grad_pos_trans =  opt.train.crits.rpn_box_reg_crit:backward(rpn_pos_trans, rpn_pos_trans_targets)
    grad_pos_trans:mul(opt.train.mid_box_reg_weight)
 --   grad_pos_trans:zero() --debug
-   local grad_neg_roi_boxes = neg_boxes.new(#neg_boxes):zero()
+   local rpn_grad_neg_roi_boxes = rpn_neg_boxes.new(#rpn_neg_boxes):zero()
+   local rpn_grad_pos_roi_boxes = rpn_pos_boxes.new(#rpn_pos_boxes):zero()
 
 -------------------------------------------------------------------------------
 -- ----------------------------------------- grad rpn out
 -------------------------------------------------------------------------------
    local grad_pos_data, grad_neg_data = {}, {}
-   grad_pos_data[1] = grad_pos_roi_boxes
+   grad_pos_data[1] = rpn_grad_pos_roi_boxes
    grad_pos_data[3] = grad_pos_trans
---   grad_pos_data[4] = grad_rpn_scores[{{1,num_pos}}]
-   grad_pos_data[4] = grad_pos_scores
-   grad_neg_data[1] = grad_neg_roi_boxes
-  -- grad_neg_data[4] = grad_rpn_scores[{{num_pos+1,num_pos+num_neg}}]
-   grad_neg_data[4] = grad_neg_scores
+   grad_pos_data[4] = grad_rpn_scores[{{1,rpn_num_pos}}]
+--   grad_pos_data[4] = grad_pos_scores
+   grad_neg_data[1] = rpn_grad_neg_roi_boxes
+   grad_neg_data[4] = grad_rpn_scores[{{rpn_num_pos+1,rpn_num_pos+rpn_num_neg}}]
+  -- grad_neg_data[4] = grad_neg_scores
 
    local grad_rpn_out = model.sampler:backward(                          --debug
                               {rpn_out, {gt_boxes, gt_labels}},
@@ -414,6 +457,7 @@ function deploy.forward_test(input)
   local pos_exp = rpn_scores_exp[{1, {}, 1}]
   local neg_exp = rpn_scores_exp[{1, {}, 2}]
   local scores = (pos_exp + neg_exp):pow(-1):cmul(pos_exp)
+--local scores = rpn_scores:select(3,2):contiguous():view(-1)
   
   local verbose = true
   if verbose then

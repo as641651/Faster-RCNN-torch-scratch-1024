@@ -179,9 +179,9 @@ print(model)
 net.cnn_1 =  vgg1024_1(model)
 net.cnn_2 =  vgg1024_2(model)
 net.rpn = rpn(model)
-net.sampler = nn.BoxSamplerHelper{batch_size = opt.sampler_batch_size,
-                                  nms_thresh = opt.sampler_nms_thresh,
-                                  num_proposals = opt.sampler_num_proposals}
+net.sampler = nn.BoxSamplerHelper{batch_size = 256}
+net.proposal = nn.BoxSamplerHelper{batch_size = opt.sampler_batch_size,
+                                   proposal = true}
 net.pooling = nn.ROIPooling(opt.output_height, opt.output_width)
 net.recog = recog(model)
 net.opt = opt

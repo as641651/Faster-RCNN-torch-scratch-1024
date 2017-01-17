@@ -12,7 +12,6 @@ function BoxSampler:__init(options)
   self.low_thresh = utils.getopt(options, 'low_thresh', 0.3)
   self.high_thresh = utils.getopt(options, 'high_thresh', 0.7)
   self.batch_size = utils.getopt(options, 'batch_size', 256)
-  
   self.x_min, self.x_max = nil, nil
   self.y_min, self.y_max = nil, nil
   
@@ -65,7 +64,6 @@ function BoxSampler:updateOutput(input)
   local input_boxes = input[1]
   local target_boxes = input[2]
   local N, B1, B2 = unpack_dims(input_boxes, target_boxes)
-
   local ious = self.box_iou:forward(input) -- N x B1 x B2
   local input_max_iou, input_idx = ious:max(3)   -- N x B1 x 1
   input_max_iou = input_max_iou:view(N, B1)

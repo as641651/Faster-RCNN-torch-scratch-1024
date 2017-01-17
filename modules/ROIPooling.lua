@@ -95,6 +95,7 @@ function layer:updateGradInput(input,gradOutput)
     local im = data[r]
     local g  = self.pooler[i]:updateGradInput(im,gradOutput[i])
     self.gradInput[1][r]:add(g)
+    self.pooler[i]:clearState()
   end
   return self.gradInput
 end

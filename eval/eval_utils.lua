@@ -110,15 +110,19 @@ function eval_utils.eval_split(kwargs)
   for cls = 1, model.opt.num_classes do
     ap_results[cls], pr_curves[cls], rc_results[cls] = unpack(evaluator[cls]:evaluate())
   end
-  ap_results.rpn_ap = ap_results[1]['ov0.3'] -- RPN ap
+  ap_results.rpn_ap = ap_results[1]['ov0.5'] -- RPN ap
   ap_results.map = {}
   rc_results.mRecall = {}
   for cls = 2, model.opt.num_classes do
     if ap_results[cls] ~= nil then
-      table.insert(ap_results.map, ap_results[cls]['ov0.3'])
-      print(cls,ap_results[cls]['ov0.3'])
-      table.insert(rc_results.mRecall, rc_results[cls]['ov0.3'])
-      print(cls,rc_results[cls]['ov0.3'])
+      table.insert(ap_results.map, ap_results[cls]['ov0.5'])
+      print(cls,ap_results[cls]['ov0.5'])
+      table.insert(rc_results.mRecall, rc_results[cls]['ov0.5'])
+      print(cls,rc_results[cls]['ov0.5'])
+    else
+      table.insert(ap_results.map, 0)
+      print("no proposal")
+      table.insert(rc_results.mRecall, 0)
     end
   end
   ap_results.map = utils.average_values(ap_results.map)
@@ -283,7 +287,7 @@ end
 function DenseCaptioningEvaluator:evaluate(verbose)
   if verbose == nil then verbose = true end
   --local min_overlaps = {0.3, 0.4, 0.5, 0.6, 0.7}
-  local min_overlaps = {0.3}
+  local min_overlaps = {0.5}
 
   if next(self.all_scores) == nil then return {nil,nil,nil} end
   -- concatenate everything across all images
